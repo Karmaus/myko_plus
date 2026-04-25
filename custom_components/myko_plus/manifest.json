@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "documentation": "https://www.mykoapp.com/",
   "requirements": [],
-  "codeowners": ["@openai"],
+  "codeowners": ["@Karmaus"],
   "config_flow": true,
   "iot_class": "cloud_polling",
   "loggers": ["custom_components.myko_plus"]
