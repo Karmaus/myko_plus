@@ -1,11 +1,12 @@
 {
   "domain": "myko_plus",
   "name": "Myko+",
-  "version": "0.1.0",
-  "documentation": "https://www.mykoapp.com/",
-  "requirements": [],
   "codeowners": ["@Karmaus"],
   "config_flow": true,
+  "documentation": "https://github.com/Karmaus/myko_plus",
   "iot_class": "cloud_polling",
-  "loggers": ["custom_components.myko_plus"]
+  "issue_tracker": "https://github.com/Karmaus/myko_plus/issues",
+  "loggers": ["custom_components.myko_plus"],
+  "requirements": [],
+  "version": "0.1.0"
 }
