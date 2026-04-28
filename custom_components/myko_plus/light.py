@@ -19,11 +19,38 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 
 MYKO_COLOR_TEMP_PRESETS = (2700, 4000, 5000, 6500)
+MYKO_COLOR_TEMP_TO_DEVICE = {
+    2700: 6500,
+    4000: 5000,
+    5000: 4000,
+    6500: 2700,
+}
+MYKO_COLOR_TEMP_FROM_DEVICE = {value: key for key, value in MYKO_COLOR_TEMP_TO_DEVICE.items()}
 MYKO_COLOR_MODE_RGB = 1
 MYKO_COLOR_MODE_MOOD = 2
 MYKO_COLOR_MODE_COLOR_TEMP = 3
-MYKO_EFFECTS = {f"Mood {preset}": preset for preset in range(1, 9)}
+MYKO_EFFECTS = {
+    "Flash": 0,
+    "Fade 7": 1,
+    "Fade 3": 2,
+    "Jump 7": 3,
+    "Jump 3": 4,
+    "Chill": 5,
+    "Christmas": 6,
+    "Clarity": 7,
+    "Dinner party": 8,
+    "Focus": 9,
+    "Getting ready": 10,
+    "Red, White, and Blue": 11,
+    "Moonlight": 12,
+    "Night Light": 13,
+    "Rainbow": 14,
+    "Sleep": 15,
+    "Valentine's day": 16,
+    "Wake Up": 17,
+}
 MYKO_EFFECTS_BY_PRESET = {preset: name for name, preset in MYKO_EFFECTS.items()}
+MYKO_SPEED_EFFECT_PRESETS = {0, 1, 2, 3, 4, 6, 11, 14, 16}
 
 
 def _extract_device_id(device: dict[str, Any]) -> str | None:
@@ -205,7 +232,10 @@ class MykoLight(CoordinatorEntity, LightEntity):
     @property
     def color_temp_kelvin(self) -> int | None:
         state = _state_for_device(self.coordinator.data["states"], self._device_id)
-        return _int_from_state(state, "temperature", "colorTemperature", "kelvin", "temp")
+        raw = _int_from_state(state, "temperature", "colorTemperature", "kelvin", "temp")
+        if raw is None:
+            return None
+        return MYKO_COLOR_TEMP_FROM_DEVICE.get(raw, raw)
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
@@ -234,9 +264,13 @@ class MykoLight(CoordinatorEntity, LightEntity):
             parameters["colorRGB"] = _hex_from_rgb(rgb)
             parameters["colorMode"] = MYKO_COLOR_MODE_RGB
         elif kelvin is not None:
-            parameters["colorTemperature"] = min(
+            requested_kelvin = min(
                 MYKO_COLOR_TEMP_PRESETS,
                 key=lambda preset: abs(preset - kelvin),
+            )
+            parameters["colorTemperature"] = MYKO_COLOR_TEMP_TO_DEVICE.get(
+                requested_kelvin,
+                requested_kelvin,
             )
             parameters["colorMode"] = MYKO_COLOR_MODE_COLOR_TEMP
         elif effect is not None and effect in MYKO_EFFECTS:

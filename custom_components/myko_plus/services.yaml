@@ -1,0 +1,22 @@
+set_mood_speed:
+  name: Set mood speed
+  description: Set the animation speed for the active animated Myko mood.
+  fields:
+    entity_id:
+      name: Light
+      description: Myko light entity with an animated mood selected.
+      required: true
+      selector:
+        entity:
+          integration: myko_plus
+          domain: light
+    speed:
+      name: Speed
+      description: Animation speed from 1 to 10.
+      required: true
+      selector:
+        number:
+          min: 1
+          max: 10
+          step: 1
+          mode: slider

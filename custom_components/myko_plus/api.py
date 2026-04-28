@@ -109,6 +109,10 @@ class MykoApiClient:
             if self._email and self._password:
                 return await self.login(self._email, self._password)
             raise
+        except MykoAuthError:
+            if self._email and self._password:
+                return await self.login(self._email, self._password)
+            raise
 
     async def async_get_homes(self) -> list[dict[str, Any]]:
         self._ensure_authenticated()
