@@ -33,31 +33,24 @@ class MykoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         _LOGGER.debug("Myko devices payload for home %s: %s", self.home_id, devices)
 
-        try:
-            states = await self.api.async_get_home_states(self.home_id)
-        except MykoApiError as err:
-            if "404 calling" not in str(err):
-                raise UpdateFailed(str(err)) from err
+        states: dict[str, Any] = {}
+        for device in devices:
+            if not isinstance(device, dict):
+                continue
 
-            _LOGGER.debug(
-                "Home states endpoint is unavailable for home %s, falling back to per-device state",
-                self.home_id,
-            )
-            states = {}
-            for device in devices:
-                if not isinstance(device, dict):
-                    continue
-                device_id = _extract_device_id(device) or ""
-                if not device_id:
-                    continue
-                inline_state = device.get("state")
-                if isinstance(inline_state, dict):
-                    states[device_id] = inline_state
-                    continue
-                try:
-                    states[device_id] = await self.api.async_get_device_state(device_id)
-                except MykoApiError as device_err:
-                    _LOGGER.debug("Device state fetch failed for %s: %s", device_id, device_err)
-                    states[device_id] = {}
+            device_id = _extract_device_id(device) or ""
+            if not device_id:
+                continue
+
+            inline_state = device.get("state")
+            if isinstance(inline_state, dict):
+                states[device_id] = inline_state
+                continue
+
+            try:
+                states[device_id] = await self.api.async_get_device_state(device_id)
+            except MykoApiError as device_err:
+                _LOGGER.debug("Device state fetch failed for %s: %s", device_id, device_err)
+                states[device_id] = {}
 
         return {"devices": devices, "states": states}

@@ -43,6 +43,7 @@ Some parts of the API are based on reverse engineering and may change over time.
 ## Notes
 
 - This integration uses the Myko+ cloud API and does not support local control.
+- Device state is currently read from the `/devices` payload, with per-device fallback only when inline state is missing.
 - API behavior may change without notice from the provider.
 - Feedback and contributions are welcome!
 
