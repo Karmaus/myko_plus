@@ -9,7 +9,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import MykoApiClient, MykoApiError
 from .const import SCAN_INTERVAL_SECONDS
-from .light import _extract_device_id
+from .entity_helpers import extract_device_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class MykoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not isinstance(device, dict):
                 continue
 
-            device_id = _extract_device_id(device) or ""
+            device_id = extract_device_id(device) or ""
             if not device_id:
                 continue
 
