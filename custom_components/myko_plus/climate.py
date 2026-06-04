@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import logging
+
 from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature, HVACAction, HVACMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
@@ -20,6 +22,8 @@ from .entity_helpers import (
     state_for_device,
 )
 
+_LOGGER = logging.getLogger(__name__)
+
 MYKO_HVAC_MODE_TO_DEVICE = {
     HVACMode.COOL: 0,
     HVACMode.HEAT: 1,
@@ -27,12 +31,20 @@ MYKO_HVAC_MODE_TO_DEVICE = {
     HVACMode.DRY: 3,
 }
 MYKO_HVAC_MODE_FROM_DEVICE = {value: key for key, value in MYKO_HVAC_MODE_TO_DEVICE.items()}
-MYKO_FAN_MODE_TO_DEVICE = {"low": 0, "medium": 1, "high": 2}
+MYKO_FAN_MODE_TO_DEVICE = {"auto": -1, "low": 0, "medium": 1, "high": 2}
 MYKO_FAN_MODE_FROM_DEVICE = {value: key for key, value in MYKO_FAN_MODE_TO_DEVICE.items()}
 MYKO_SWING_ON = "on"
 MYKO_SWING_OFF = "off"
+MYKO_VERTICAL_SWING_ON = "on"
+MYKO_VERTICAL_SWING_OFF = "off"
 MYKO_TARGET_TEMP_MIN = 16
 MYKO_TARGET_TEMP_MAX = 32
+MYKO_PRESET_MODES = ["eco", "turbo", "sleep"]
+MYKO_PRESET_TO_DEVICE = {
+    "eco": "eco",
+    "turbo": "turbo",
+    "sleep": "sleep",
+}
 
 
 def _looks_like_climate(device: dict[str, Any]) -> bool:
@@ -58,14 +70,16 @@ class MykoClimate(CoordinatorEntity, ClimateEntity):
         | ClimateEntityFeature.SWING_MODE
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
+        | ClimateEntityFeature.PRESET_MODE
     )
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_target_temperature_step = 1
+    _attr_target_temperature_step = 0.5
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT, HVACMode.FAN_ONLY, HVACMode.DRY]
     _attr_fan_modes = list(MYKO_FAN_MODE_TO_DEVICE)
     _attr_swing_modes = [MYKO_SWING_OFF, MYKO_SWING_ON]
     _attr_min_temp = MYKO_TARGET_TEMP_MIN
     _attr_max_temp = MYKO_TARGET_TEMP_MAX
+    _attr_preset_modes = MYKO_PRESET_MODES + ["none"]
 
     def __init__(self, coordinator, device: dict[str, Any]) -> None:
         super().__init__(coordinator)
@@ -73,6 +87,7 @@ class MykoClimate(CoordinatorEntity, ClimateEntity):
         self._device_id = extract_device_id(device)
         self._attr_unique_id = self._device_id
         self._attr_name = extract_device_name(device) or self._device_id
+        self._preset_mode_state: str | None = None
 
     @property
     def available(self) -> bool:
@@ -81,6 +96,67 @@ class MykoClimate(CoordinatorEntity, ClimateEntity):
         if isinstance(connected, bool):
             return connected
         return super().available
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return additional state attributes."""
+        state = state_for_device(self.coordinator.data.get("states"), self._device_id)
+        attrs: dict[str, Any] = {}
+
+        # Humidity
+        humidity = int_from_state(state, "humidity", "currentHumidity", "indoorHumidity")
+        if humidity is not None:
+            attrs["current_humidity"] = humidity
+
+        target_humidity = int_from_state(state, "targetHumidity", "dehumidifyLevel")
+        if target_humidity is not None:
+            attrs["target_humidity"] = target_humidity
+
+        # Vertical swing
+        vertical_swing = bool_from_state(state, "verticalSwing", "vSwing", "airSwingVertical")
+        if vertical_swing is not None:
+            attrs["vertical_swing"] = MYKO_VERTICAL_SWING_ON if vertical_swing else MYKO_VERTICAL_SWING_OFF
+
+        # Sleep mode
+        sleep_mode = bool_from_state(state, "sleep", "sleepMode")
+        if sleep_mode is not None:
+            attrs["sleep_mode"] = sleep_mode
+
+        # Turbo/boost mode
+        turbo_mode = bool_from_state(state, "turbo", "boost", "powerful")
+        if turbo_mode is not None:
+            attrs["turbo_mode"] = turbo_mode
+
+        # Eco mode
+        eco_mode = bool_from_state(state, "eco", "ecoMode")
+        if eco_mode is not None:
+            attrs["eco_mode"] = eco_mode
+
+        # Filter life indicator
+        filter_life = int_from_state(state, "filterLife", "filterHours")
+        if filter_life is not None:
+            attrs["filter_life_hours"] = filter_life
+
+        return attrs
+
+    @property
+    def preset_mode(self) -> str | None:
+        """Return the current preset mode."""
+        state = state_for_device(self.coordinator.data.get("states"), self._device_id)
+
+        # Check for sleep mode
+        if bool_from_state(state, "sleep", "sleepMode"):
+            return "sleep"
+
+        # Check for turbo/boost mode
+        if bool_from_state(state, "turbo", "boost", "powerful"):
+            return "turbo"
+
+        # Check for eco mode
+        if bool_from_state(state, "eco", "ecoMode"):
+            return "eco"
+
+        return "none"
 
     @property
     def current_temperature(self) -> float | None:
@@ -137,57 +213,114 @@ class MykoClimate(CoordinatorEntity, ClimateEntity):
         if temperature is None:
             return
 
-        rounded_temperature = max(MYKO_TARGET_TEMP_MIN, min(MYKO_TARGET_TEMP_MAX, round(float(temperature))))
-        parameters = {"targetTemp": rounded_temperature}
+        try:
+            rounded_temperature = max(MYKO_TARGET_TEMP_MIN, min(MYKO_TARGET_TEMP_MAX, round(float(temperature) * 2) / 2))
+            parameters = {"targetTemp": rounded_temperature}
 
-        if self.hvac_mode == HVACMode.OFF:
-            parameters["power"] = True
+            if self.hvac_mode == HVACMode.OFF:
+                parameters["power"] = True
 
-        await self.coordinator.api.async_update_device_state(self._device_id, parameters)
-        optimistic_update(self.coordinator, self._device_id, parameters)
+            _LOGGER.debug("Setting temperature to %s for device %s", rounded_temperature, self._device_id)
+            await self.coordinator.api.async_update_device_state(self._device_id, parameters)
+            optimistic_update(self.coordinator, self._device_id, parameters)
+        except Exception as exc:
+            _LOGGER.error("Failed to set temperature for %s: %s", self._device_id, exc)
+            raise
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        if hvac_mode == HVACMode.OFF:
-            await self.async_turn_off()
-            return
+        try:
+            if hvac_mode == HVACMode.OFF:
+                await self.async_turn_off()
+                return
 
-        device_mode = MYKO_HVAC_MODE_TO_DEVICE.get(hvac_mode)
-        if device_mode is None:
-            return
+            device_mode = MYKO_HVAC_MODE_TO_DEVICE.get(hvac_mode)
+            if device_mode is None:
+                return
 
-        parameters = {"power": True, "mode": device_mode}
-        await self.coordinator.api.async_update_device_state(self._device_id, parameters)
-        optimistic_update(self.coordinator, self._device_id, parameters)
+            parameters = {"power": True, "mode": device_mode}
+            _LOGGER.debug("Setting HVAC mode to %s for device %s", hvac_mode, self._device_id)
+            await self.coordinator.api.async_update_device_state(self._device_id, parameters)
+            optimistic_update(self.coordinator, self._device_id, parameters)
+        except Exception as exc:
+            _LOGGER.error("Failed to set HVAC mode for %s: %s", self._device_id, exc)
+            raise
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
-        device_speed = MYKO_FAN_MODE_TO_DEVICE.get(fan_mode)
-        if device_speed is None:
-            return
+        try:
+            device_speed = MYKO_FAN_MODE_TO_DEVICE.get(fan_mode)
+            if device_speed is None:
+                return
 
-        parameters = {"fanSpeed": device_speed}
-        await self.coordinator.api.async_update_device_state(self._device_id, parameters)
-        optimistic_update(self.coordinator, self._device_id, parameters)
+            parameters = {"fanSpeed": device_speed}
+            _LOGGER.debug("Setting fan mode to %s for device %s", fan_mode, self._device_id)
+            await self.coordinator.api.async_update_device_state(self._device_id, parameters)
+            optimistic_update(self.coordinator, self._device_id, parameters)
+        except Exception as exc:
+            _LOGGER.error("Failed to set fan mode for %s: %s", self._device_id, exc)
+            raise
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
-        if swing_mode not in self.swing_modes:
-            return
+        try:
+            if swing_mode not in self.swing_modes:
+                return
 
-        parameters = {"airSwing": swing_mode == MYKO_SWING_ON}
-        await self.coordinator.api.async_update_device_state(self._device_id, parameters)
-        optimistic_update(self.coordinator, self._device_id, parameters)
+            parameters = {"airSwing": swing_mode == MYKO_SWING_ON}
+            _LOGGER.debug("Setting swing mode to %s for device %s", swing_mode, self._device_id)
+            await self.coordinator.api.async_update_device_state(self._device_id, parameters)
+            optimistic_update(self.coordinator, self._device_id, parameters)
+        except Exception as exc:
+            _LOGGER.error("Failed to set swing mode for %s: %s", self._device_id, exc)
+            raise
+
+    async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set the preset mode."""
+        try:
+            if preset_mode == "none":
+                # Disable all preset modes
+                parameters = {"sleep": False, "turbo": False, "eco": False}
+            elif preset_mode == "sleep":
+                parameters = {"sleep": True, "turbo": False, "eco": False}
+            elif preset_mode == "turbo":
+                parameters = {"sleep": False, "turbo": True, "eco": False}
+            elif preset_mode == "eco":
+                parameters = {"sleep": False, "turbo": False, "eco": True}
+            else:
+                return
+
+            _LOGGER.debug("Setting preset mode to %s for device %s", preset_mode, self._device_id)
+            await self.coordinator.api.async_update_device_state(self._device_id, parameters)
+            optimistic_update(self.coordinator, self._device_id, parameters)
+        except Exception as exc:
+            _LOGGER.error("Failed to set preset mode for %s: %s", self._device_id, exc)
+            raise
 
     async def async_turn_on(self) -> None:
-        current_mode = self.hvac_mode
-        parameters: dict[str, Any] = {"power": True}
-        if current_mode not in MYKO_HVAC_MODE_TO_DEVICE:
-            parameters["mode"] = MYKO_HVAC_MODE_TO_DEVICE[HVACMode.COOL]
+        try:
+            current_mode = self.hvac_mode
+            parameters: dict[str, Any] = {"power": True}
+            if current_mode not in MYKO_HVAC_MODE_TO_DEVICE:
+                parameters["mode"] = MYKO_HVAC_MODE_TO_DEVICE[HVACMode.COOL]
 
-        await self.coordinator.api.async_update_device_state(self._device_id, parameters)
-        optimistic_update(self.coordinator, self._device_id, parameters)
+            _LOGGER.debug("Turning on device %s", self._device_id)
+            await self.coordinator.api.async_update_device_state(self._device_id, parameters)
+            optimistic_update(self.coordinator, self._device_id, parameters)
+        except Exception as exc:
+            _LOGGER.error("Failed to turn on device %s: %s", self._device_id, exc)
+            raise
 
     async def async_turn_off(self) -> None:
-        await self.coordinator.api.async_turn_off(self._device_id)
-        optimistic_update(self.coordinator, self._device_id, {"power": False})
+        try:
+            _LOGGER.debug("Turning off device %s", self._device_id)
+            await self.coordinator.api.async_turn_off(self._device_id)
+            optimistic_update(self.coordinator, self._device_id, {"power": False})
+        except Exception as exc:
+            _LOGGER.error("Failed to turn off device %s: %s", self._device_id, exc)
+            raise
+
+    async def async_update(self) -> None:
+        """Manually trigger an update from the device."""
+        _LOGGER.debug("Manual update requested for device %s", self._device_id)
+        await self.coordinator.async_request_refresh()
 
 
 async def async_setup_entry(
