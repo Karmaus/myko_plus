@@ -36,22 +36,18 @@ MYKO_TARGET_TEMP_MAX = 32
 
 
 def _looks_like_climate(device: dict[str, Any]) -> bool:
-    if device.get("type") == 5:
+    state = device.get("state") or {}
+
+    if isinstance(state, dict):
+        if state.get("deviceName") in ("PORTABLE_AC", "AIR_CONDITIONER"):
+            return True
+
+    if device.get("profile_name") in ("PORTABLE_AC", "AIR_CONDITIONER"):
+        return True
+    if device.get("model") in ("PORTABLE_AC", "AIR_CONDITIONER"):
         return True
 
-    state = device.get("state")
-    if isinstance(state, dict) and any(key in state for key in ("targetTemp", "currentTemp", "fanSpeed", "sleepMode", "airSwing")):
-        return True
-
-    fields: list[str] = []
-    for key in ("model", "profile_name", "reference", "name", "deviceName"):
-        value = device.get(key)
-        if isinstance(value, str):
-            fields.append(value.lower())
-
-    haystack = " ".join(fields)
-    climate_markers = ("portable_ac", "aircon", "air conditioner", "conditioner", "ac")
-    return any(marker in haystack for marker in climate_markers)
+    return False
 
 
 class MykoClimate(CoordinatorEntity, ClimateEntity):
