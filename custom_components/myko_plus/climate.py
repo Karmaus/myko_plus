@@ -26,12 +26,12 @@ _LOGGER = logging.getLogger(__name__)
 
 MYKO_HVAC_MODE_TO_DEVICE = {
     HVACMode.COOL: 0,
-    HVACMode.HEAT: 1,
+    HVACMode.DRY: 1,
     HVACMode.FAN_ONLY: 2,
-    HVACMode.DRY: 3,
+    HVACMode.HEAT: 3,
 }
 MYKO_HVAC_MODE_FROM_DEVICE = {value: key for key, value in MYKO_HVAC_MODE_TO_DEVICE.items()}
-MYKO_FAN_MODE_TO_DEVICE = {"auto": -1, "low": 0, "medium": 1, "high": 2}
+MYKO_FAN_MODE_TO_DEVICE = {"low": 0, "medium": 1, "high": 2, "auto": 3}
 MYKO_FAN_MODE_FROM_DEVICE = {value: key for key, value in MYKO_FAN_MODE_TO_DEVICE.items()}
 MYKO_SWING_ON = "on"
 MYKO_SWING_OFF = "off"
@@ -176,7 +176,19 @@ class MykoClimate(CoordinatorEntity, ClimateEntity):
         if not bool_from_state(state, "power"):
             return HVACMode.OFF
 
-        raw_mode = int_from_state(state, "mode")
+        raw_mode = int_from_state(state, "mode", "operationMode", "opMode", "acMode")
+        if raw_mode is None:
+            mode_str = state.get("mode", "").lower() if isinstance(state.get("mode"), str) else ""
+            if "cool" in mode_str:
+                return HVACMode.COOL
+            elif "heat" in mode_str:
+                return HVACMode.HEAT
+            elif "fan" in mode_str:
+                return HVACMode.FAN_ONLY
+            elif "dry" in mode_str or "dehumidif" in mode_str:
+                return HVACMode.DRY
+            return HVACMode.COOL  # default
+
         return MYKO_HVAC_MODE_FROM_DEVICE.get(raw_mode, HVACMode.COOL)
 
     @property
@@ -197,13 +209,15 @@ class MykoClimate(CoordinatorEntity, ClimateEntity):
     @property
     def fan_mode(self) -> str | None:
         state = state_for_device(self.coordinator.data.get("states"), self._device_id)
-        raw_speed = int_from_state(state, "fanSpeed")
+        raw_speed = int_from_state(state, "fanSpeed", "speed", "windSpeed", "fanLevel")
+        if raw_speed is None:
+            return None
         return MYKO_FAN_MODE_FROM_DEVICE.get(raw_speed)
 
     @property
     def swing_mode(self) -> str | None:
         state = state_for_device(self.coordinator.data.get("states"), self._device_id)
-        air_swing = bool_from_state(state, "airSwing")
+        air_swing = bool_from_state(state, "airSwing", "swing", "horizontalSwing", "hSwing")
         if air_swing is None:
             return None
         return MYKO_SWING_ON if air_swing else MYKO_SWING_OFF
