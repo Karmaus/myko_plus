@@ -13,9 +13,10 @@ import voluptuous as vol
 from .api import MykoApiClient
 from .const import CONF_BASE_URL, CONF_EMAIL, CONF_HOME_ID, CONF_PASSWORD, DOMAIN
 from .coordinator import MykoDataUpdateCoordinator
-from .light import MYKO_EFFECTS_BY_PRESET, MYKO_SPEED_EFFECT_PRESETS, _int_from_state, _state_for_device
+from .entity_helpers import int_from_state, state_for_device
+from .light import MYKO_EFFECTS_BY_PRESET, MYKO_SPEED_EFFECT_PRESETS
 
-PLATFORMS: list[Platform] = [Platform.LIGHT]
+PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.CLIMATE, Platform.SWITCH]
 SERVICE_SET_MOOD_SPEED = "set_mood_speed"
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,8 +45,8 @@ async def _async_handle_set_mood_speed(hass: HomeAssistant, call: ServiceCall) -
 
     coordinator = runtime["coordinator"]
     device_id = entity_entry.unique_id
-    state = _state_for_device(coordinator.data.get("states"), device_id)
-    preset = _int_from_state(state, "sequencePreset")
+    state = state_for_device(coordinator.data.get("states"), device_id)
+    preset = int_from_state(state, "sequencePreset")
 
     if preset is None:
         raise HomeAssistantError(f"{entity_id} nu are niciun mood activ.")
@@ -60,7 +61,7 @@ async def _async_handle_set_mood_speed(hass: HomeAssistant, call: ServiceCall) -
 
     data = coordinator.data or {}
     states = dict(data.get("states", {}))
-    updated_state = dict(_state_for_device(states, device_id))
+    updated_state = dict(state_for_device(states, device_id))
     updated_state["animationSpeed"] = speed
     states[device_id] = updated_state
 
