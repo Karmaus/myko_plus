@@ -42,6 +42,10 @@ class MykoDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if not device_id:
                 continue
 
+            # Temporary: log raw device fields so we can see what the API returns
+            _LOGGER.warning("Myko raw device fields for %s: %s", device_id, list(device.keys()))
+            _LOGGER.warning("Myko raw device data for %s: %s", device_id, device)
+
             inline_state = device.get("state")
             if isinstance(inline_state, dict):
                 states[device_id] = inline_state
