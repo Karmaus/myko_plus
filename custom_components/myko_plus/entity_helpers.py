@@ -4,7 +4,7 @@ from typing import Any
 
 
 def extract_device_id(device: dict[str, Any]) -> str | None:
-    for key in ("id", "deviceId", "_id", "uuid", "serialNumber", "deviceSerialNumber", "serial_number"):
+    for key in ("_id", "id", "deviceId", "uuid", "serialNumber", "deviceSerialNumber", "serial_number"):
         value = device.get(key)
         if value not in (None, ""):
             return str(value)

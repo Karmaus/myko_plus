@@ -10,7 +10,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .climate import _looks_like_climate
 from .const import DOMAIN
-from .entity_helpers import bool_from_state, device_for_device, extract_device_id, extract_device_name, optimistic_update, state_for_device
+from .entity_helpers import bool_from_state, extract_device_id, extract_device_name, optimistic_update, state_for_device
 
 
 class MykoSleepModeSwitch(CoordinatorEntity, SwitchEntity):
@@ -21,13 +21,16 @@ class MykoSleepModeSwitch(CoordinatorEntity, SwitchEntity):
         self._attr_unique_id = f"{self._device_id}_sleep_mode"
         self._attr_name = f"{extract_device_name(device)} Sleep Mode"
 
-    @property
-    def available(self) -> bool:
-        device = device_for_device(self.coordinator.data.get("devices"), self._device_id)
-        connected = device.get("connected")
-        if isinstance(connected, bool):
-            return connected
-        return super().available
+        from homeassistant.helpers.device_registry import DeviceInfo
+        state = device.get("state") or {}
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=extract_device_name(device),
+            manufacturer=device.get("client") or device.get("manufacturer"),
+            model=device.get("reference") or device.get("model"),
+            sw_version=state.get("fwVer"),
+            serial_number=device.get("serial_number"),
+        )
 
     @property
     def is_on(self) -> bool | None:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.helpers.device_registry import DeviceInfo
+
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS,
     ATTR_COLOR_TEMP_KELVIN,
@@ -19,7 +21,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .entity_helpers import (
     bool_from_state,
-    device_for_device,
     extract_device_id,
     extract_device_name,
     int_from_state,
@@ -27,14 +28,6 @@ from .entity_helpers import (
     state_for_device,
 )
 
-MYKO_COLOR_TEMP_PRESETS = (2700, 4000, 5000, 6500)
-MYKO_COLOR_TEMP_TO_DEVICE = {
-    2700: 6500,
-    4000: 5000,
-    5000: 4000,
-    6500: 2700,
-}
-MYKO_COLOR_TEMP_FROM_DEVICE = {value: key for key, value in MYKO_COLOR_TEMP_TO_DEVICE.items()}
 MYKO_COLOR_MODE_RGB = 1
 MYKO_COLOR_MODE_MOOD = 2
 MYKO_COLOR_MODE_COLOR_TEMP = 3
@@ -63,23 +56,10 @@ MYKO_SPEED_EFFECT_PRESETS = {0, 1, 2, 3, 4, 6, 11, 14, 16}
 
 
 def _looks_like_light(device: dict[str, Any]) -> bool:
-    fields: list[str] = []
-    for key in ("type", "deviceType", "category", "productType", "model", "name", "deviceName"):
-        value = device.get(key)
-        if isinstance(value, str):
-            fields.append(value.lower())
-
-    for key in ("data", "device", "attributes"):
-        nested = device.get(key)
-        if isinstance(nested, dict):
-            for nested_key in ("type", "deviceType", "category", "productType", "model", "name", "deviceName"):
-                value = nested.get(nested_key)
-                if isinstance(value, str):
-                    fields.append(value.lower())
-
-    haystack = " ".join(fields)
-    light_markers = ("light", "bulb", "lamp", "rgb", "white", "cct", "living", "bedroom", "kitchen")
-    return any(marker in haystack for marker in light_markers)
+    profile = device.get("profile_name") or device.get("model") or ""
+    if isinstance(profile, str) and profile.upper().startswith("LIGHT_"):
+        return True
+    return False
 
 
 def _rgb_from_state(state: dict[str, Any]) -> tuple[int, int, int] | None:
@@ -104,7 +84,6 @@ def _hex_from_rgb(rgb: tuple[int, int, int]) -> str:
 
 class MykoLight(CoordinatorEntity, LightEntity):
     _attr_has_entity_name = True
-    _attr_color_mode = ColorMode.COLOR_TEMP
     _attr_supported_color_modes = {ColorMode.COLOR_TEMP, ColorMode.RGB}
     _attr_supported_features = LightEntityFeature.EFFECT
     _attr_effect_list = list(MYKO_EFFECTS)
@@ -118,13 +97,19 @@ class MykoLight(CoordinatorEntity, LightEntity):
         self._attr_unique_id = self._device_id
         self._attr_name = extract_device_name(device) or self._device_id
 
-    @property
-    def available(self) -> bool:
-        device = device_for_device(self.coordinator.data.get("devices"), self._device_id)
-        connected = device.get("connected")
-        if isinstance(connected, bool):
-            return connected
-        return super().available
+        profile = device.get("profile_name") or device.get("model") or ""
+        if profile.upper() == "LIGHT_WHITE":
+            self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}
+
+        state = device.get("state") or {}
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._attr_name,
+            manufacturer=device.get("client") or device.get("manufacturer"),
+            model=device.get("reference") or device.get("model"),
+            sw_version=state.get("fwVer"),
+            serial_number=device.get("serial_number"),
+        )
 
     @property
     def is_on(self) -> bool | None:
@@ -159,10 +144,10 @@ class MykoLight(CoordinatorEntity, LightEntity):
     @property
     def color_temp_kelvin(self) -> int | None:
         state = state_for_device(self.coordinator.data["states"], self._device_id)
-        raw = int_from_state(state, "temperature", "colorTemperature", "kelvin", "temp")
-        if raw is None:
+        raw = int_from_state(state, "colorTemperature")
+        if not raw:
             return None
-        return MYKO_COLOR_TEMP_FROM_DEVICE.get(raw, raw)
+        return max(self._attr_min_color_temp_kelvin, min(self._attr_max_color_temp_kelvin, raw))
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
@@ -191,14 +176,7 @@ class MykoLight(CoordinatorEntity, LightEntity):
             parameters["colorRGB"] = _hex_from_rgb(rgb)
             parameters["colorMode"] = MYKO_COLOR_MODE_RGB
         elif kelvin is not None:
-            requested_kelvin = min(
-                MYKO_COLOR_TEMP_PRESETS,
-                key=lambda preset: abs(preset - kelvin),
-            )
-            parameters["colorTemperature"] = MYKO_COLOR_TEMP_TO_DEVICE.get(
-                requested_kelvin,
-                requested_kelvin,
-            )
+            parameters["colorTemperature"] = max(2700, min(6500, int(kelvin)))
             parameters["colorMode"] = MYKO_COLOR_MODE_COLOR_TEMP
         elif effect is not None and effect in MYKO_EFFECTS:
             parameters["sequencePreset"] = MYKO_EFFECTS[effect]
