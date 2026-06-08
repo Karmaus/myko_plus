@@ -118,13 +118,21 @@ class MykoLight(CoordinatorEntity, LightEntity):
         self._attr_unique_id = self._device_id
         self._attr_name = extract_device_name(device) or self._device_id
 
-    @property
-    def available(self) -> bool:
-        device = device_for_device(self.coordinator.data.get("devices"), self._device_id)
-        connected = device.get("connected")
-        if isinstance(connected, bool):
-            return connected
-        return super().available
+        profile = device.get("profile_name") or device.get("model") or ""
+        if profile.upper() == "LIGHT_WHITE":
+            self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}
+            self._attr_supported_features = LightEntityFeature(0)
+            self._attr_effect_list = []
+
+        state = device.get("state") or {}
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=self._attr_name,
+            manufacturer=device.get("client") or device.get("manufacturer"),
+            model=device.get("reference") or device.get("model"),
+            sw_version=state.get("fwVer"),
+            serial_number=device.get("serial_number"),
+        )
 
     @property
     def is_on(self) -> bool | None:
