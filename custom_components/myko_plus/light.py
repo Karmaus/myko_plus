@@ -100,6 +100,8 @@ class MykoLight(CoordinatorEntity, LightEntity):
         profile = device.get("profile_name") or device.get("model") or ""
         if profile.upper() == "LIGHT_WHITE":
             self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}
+            self._attr_supported_features = LightEntityFeature(0)
+            self._attr_effect_list = []
 
         state = device.get("state") or {}
         self._attr_device_info = DeviceInfo(
