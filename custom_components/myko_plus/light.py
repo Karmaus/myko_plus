@@ -118,6 +118,11 @@ class MykoLight(CoordinatorEntity, LightEntity):
         self._attr_unique_id = self._device_id
         self._attr_name = extract_device_name(device) or self._device_id
 
+        if device.get("profile_name") == "LIGHT_WHITE":
+            self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}
+            self._attr_supported_features = 0
+            self._attr_effect_list = None
+
     @property
     def available(self) -> bool:
         device = device_for_device(self.coordinator.data.get("devices"), self._device_id)
