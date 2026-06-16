@@ -8,5 +8,5 @@
   "issue_tracker": "https://github.com/Karmaus/myko_plus/issues",
   "loggers": ["custom_components.myko_plus"],
   "requirements": [],
-  "version": "0.1.1"
+  "version": "0.1.2"
 }

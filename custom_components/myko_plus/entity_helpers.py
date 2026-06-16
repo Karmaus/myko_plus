@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from homeassistant.helpers.device_registry import DeviceInfo
+
 
 def extract_device_id(device: dict[str, Any]) -> str | None:
-    for key in ("id", "deviceId", "_id", "uuid", "serialNumber", "deviceSerialNumber", "serial_number"):
+    for key in ("_id", "id", "deviceId", "uuid", "serialNumber", "deviceSerialNumber", "serial_number"):
         value = device.get(key)
         if value not in (None, ""):
             return str(value)
@@ -33,6 +35,18 @@ def extract_device_name(device: dict[str, Any]) -> str:
                 return nested_name
 
     return "Myko device"
+
+
+def build_device_info(domain: str, device_id: str, device: dict[str, Any], default_name: str) -> DeviceInfo:
+    state = device.get("state") or {}
+    return DeviceInfo(
+        identifiers={(domain, device_id)},
+        name=default_name,
+        manufacturer=device.get("client") or device.get("manufacturer"),
+        model=device.get("reference") or device.get("model"),
+        sw_version=state.get("fwVer"),
+        serial_number=device.get("serial_number"),
+    )
 
 
 def state_for_device(states: Any, device_id: str) -> dict[str, Any]:

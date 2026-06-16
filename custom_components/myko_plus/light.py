@@ -18,6 +18,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .entity_helpers import (
+    build_device_info,
     bool_from_state,
     device_for_device,
     extract_device_id,
@@ -62,24 +63,40 @@ MYKO_EFFECTS_BY_PRESET = {preset: name for name, preset in MYKO_EFFECTS.items()}
 MYKO_SPEED_EFFECT_PRESETS = {0, 1, 2, 3, 4, 6, 11, 14, 16}
 
 
-def _looks_like_light(device: dict[str, Any]) -> bool:
+def _collect_device_strings(device: dict[str, Any]) -> list[str]:
     fields: list[str] = []
-    for key in ("type", "deviceType", "category", "productType", "model", "name", "deviceName"):
+    for key in (
+        "type",
+        "deviceType",
+        "category",
+        "productType",
+        "model",
+        "name",
+        "deviceName",
+        "profile_name",
+        "profileName",
+        "reference",
+    ):
         value = device.get(key)
         if isinstance(value, str):
             fields.append(value.lower())
 
-    for key in ("data", "device", "attributes"):
+    for key in ("state", "data", "device", "attributes"):
         nested = device.get(key)
         if isinstance(nested, dict):
-            for nested_key in ("type", "deviceType", "category", "productType", "model", "name", "deviceName"):
-                value = nested.get(nested_key)
-                if isinstance(value, str):
-                    fields.append(value.lower())
+            fields.extend(_collect_device_strings(nested))
 
-    haystack = " ".join(fields)
+    return fields
+
+
+def _looks_like_light(device: dict[str, Any]) -> bool:
+    haystack = " ".join(_collect_device_strings(device))
     light_markers = ("light", "bulb", "lamp", "rgb", "white", "cct", "living", "bedroom", "kitchen")
     return any(marker in haystack for marker in light_markers)
+
+
+def _is_light_white_device(device: dict[str, Any]) -> bool:
+    return any("light_white" in value for value in _collect_device_strings(device))
 
 
 def _rgb_from_state(state: dict[str, Any]) -> tuple[int, int, int] | None:
@@ -115,8 +132,14 @@ class MykoLight(CoordinatorEntity, LightEntity):
         super().__init__(coordinator)
         self._device = device
         self._device_id = extract_device_id(device)
+        self._is_light_white = _is_light_white_device(device)
         self._attr_unique_id = self._device_id
         self._attr_name = extract_device_name(device) or self._device_id
+        self._attr_device_info = build_device_info(DOMAIN, self._device_id, device, self._attr_name)
+        if self._is_light_white:
+            self._attr_supported_color_modes = {ColorMode.COLOR_TEMP}
+            self._attr_supported_features = LightEntityFeature(0)
+            self._attr_effect_list = []
 
     @property
     def available(self) -> bool:
@@ -144,6 +167,8 @@ class MykoLight(CoordinatorEntity, LightEntity):
     @property
     def color_mode(self) -> ColorMode | None:
         state = state_for_device(self.coordinator.data["states"], self._device_id)
+        if self._is_light_white:
+            return ColorMode.COLOR_TEMP
         color_mode = int_from_state(state, "colorMode")
         if color_mode == MYKO_COLOR_MODE_RGB:
             return ColorMode.RGB
@@ -166,11 +191,15 @@ class MykoLight(CoordinatorEntity, LightEntity):
 
     @property
     def rgb_color(self) -> tuple[int, int, int] | None:
+        if self._is_light_white:
+            return None
         state = state_for_device(self.coordinator.data["states"], self._device_id)
         return _rgb_from_state(state)
 
     @property
     def effect(self) -> str | None:
+        if self._is_light_white:
+            return None
         state = state_for_device(self.coordinator.data["states"], self._device_id)
         preset = int_from_state(state, "sequencePreset")
         if preset in MYKO_EFFECTS_BY_PRESET:
@@ -187,7 +216,7 @@ class MykoLight(CoordinatorEntity, LightEntity):
         if brightness is not None:
             parameters["brightness"] = round(brightness * 100 / 255)
 
-        if rgb is not None:
+        if rgb is not None and not self._is_light_white:
             parameters["colorRGB"] = _hex_from_rgb(rgb)
             parameters["colorMode"] = MYKO_COLOR_MODE_RGB
         elif kelvin is not None:
@@ -200,7 +229,7 @@ class MykoLight(CoordinatorEntity, LightEntity):
                 requested_kelvin,
             )
             parameters["colorMode"] = MYKO_COLOR_MODE_COLOR_TEMP
-        elif effect is not None and effect in MYKO_EFFECTS:
+        elif effect is not None and effect in MYKO_EFFECTS and not self._is_light_white:
             parameters["sequencePreset"] = MYKO_EFFECTS[effect]
             parameters["colorMode"] = MYKO_COLOR_MODE_MOOD
 

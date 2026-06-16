@@ -10,7 +10,15 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .climate import _looks_like_climate
 from .const import DOMAIN
-from .entity_helpers import bool_from_state, device_for_device, extract_device_id, extract_device_name, optimistic_update, state_for_device
+from .entity_helpers import (
+    build_device_info,
+    bool_from_state,
+    device_for_device,
+    extract_device_id,
+    extract_device_name,
+    optimistic_update,
+    state_for_device,
+)
 
 
 class MykoSleepModeSwitch(CoordinatorEntity, SwitchEntity):
@@ -20,6 +28,7 @@ class MykoSleepModeSwitch(CoordinatorEntity, SwitchEntity):
         self._device_id = extract_device_id(device)
         self._attr_unique_id = f"{self._device_id}_sleep_mode"
         self._attr_name = f"{extract_device_name(device)} Sleep Mode"
+        self._attr_device_info = build_device_info(DOMAIN, self._device_id, device, extract_device_name(device))
 
     @property
     def available(self) -> bool:

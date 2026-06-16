@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .entity_helpers import (
+    build_device_info,
     bool_from_state,
     device_for_device,
     extract_device_id,
@@ -87,6 +88,7 @@ class MykoClimate(CoordinatorEntity, ClimateEntity):
         self._device_id = extract_device_id(device)
         self._attr_unique_id = self._device_id
         self._attr_name = extract_device_name(device) or self._device_id
+        self._attr_device_info = build_device_info(DOMAIN, self._device_id, device, self._attr_name)
         self._preset_mode_state: str | None = None
 
     @property
