@@ -21,6 +21,54 @@ from .entity_helpers import (
 )
 
 
+def _looks_like_plug(device: dict[str, Any]) -> bool:
+    state = device.get("state") or {}
+
+    if isinstance(state, dict):
+        if state.get("deviceName") in ("PLUG", "PLUG_EM"):
+            return True
+
+    if device.get("profile_name") in ("PLUG", "PLUG_EM"):
+        return True
+    if device.get("model") in ("PLUG", "PLUG_EM"):
+        return True
+
+    return False
+
+
+class MykoPlugSwitch(CoordinatorEntity, SwitchEntity):
+    def __init__(self, coordinator, device: dict[str, Any]) -> None:
+        super().__init__(coordinator)
+        self._device = device
+        self._device_id = extract_device_id(device)
+        self._attr_unique_id = self._device_id
+        self._attr_name = extract_device_name(device) or self._device_id
+        self._attr_device_info = build_device_info(DOMAIN, self._device_id, device, self._attr_name)
+
+    @property
+    def available(self) -> bool:
+        device = device_for_device(self.coordinator.data.get("devices"), self._device_id)
+        connected = device.get("connected")
+        if isinstance(connected, bool):
+            return connected
+        return super().available
+
+    @property
+    def is_on(self) -> bool | None:
+        state = state_for_device(self.coordinator.data.get("states"), self._device_id)
+        return bool_from_state(state, "power", "isOn", "on", "state")
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        parameters = {"power": True}
+        await self.coordinator.api.async_update_device_state(self._device_id, parameters)
+        optimistic_update(self.coordinator, self._device_id, parameters)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        parameters = {"power": False}
+        await self.coordinator.api.async_update_device_state(self._device_id, parameters)
+        optimistic_update(self.coordinator, self._device_id, parameters)
+
+
 class MykoSleepModeSwitch(CoordinatorEntity, SwitchEntity):
     def __init__(self, coordinator, device: dict[str, Any]) -> None:
         super().__init__(coordinator)
@@ -63,15 +111,21 @@ async def async_setup_entry(
     coordinator = runtime["coordinator"]
 
     devices = coordinator.data.get("devices", [])
-    sleep_switches: list[MykoSleepModeSwitch] = []
+    switches: list[SwitchEntity] = []
     for device in devices:
         if not isinstance(device, dict):
             continue
-        if not _looks_like_climate(device):
+
+        device_id = extract_device_id(device)
+        if not device_id:
             continue
 
-        state = device.get("state")
-        if isinstance(state, dict) and "sleepMode" in state and extract_device_id(device):
-            sleep_switches.append(MykoSleepModeSwitch(coordinator, device))
+        if _looks_like_climate(device):
+            state = device.get("state")
+            if isinstance(state, dict) and "sleepMode" in state:
+                switches.append(MykoSleepModeSwitch(coordinator, device))
 
-    async_add_entities(sleep_switches)
+        if _looks_like_plug(device):
+            switches.append(MykoPlugSwitch(coordinator, device))
+
+    async_add_entities(switches)

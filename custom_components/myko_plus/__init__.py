@@ -16,7 +16,7 @@ from .coordinator import MykoDataUpdateCoordinator
 from .entity_helpers import int_from_state, state_for_device
 from .light import MYKO_EFFECTS_BY_PRESET, MYKO_SPEED_EFFECT_PRESETS
 
-PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.CLIMATE, Platform.SWITCH]
+PLATFORMS: list[Platform] = [Platform.LIGHT, Platform.CLIMATE, Platform.SWITCH, Platform.SENSOR]
 SERVICE_SET_MOOD_SPEED = "set_mood_speed"
 
 _LOGGER = logging.getLogger(__name__)
