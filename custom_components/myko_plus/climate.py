@@ -52,12 +52,12 @@ def _looks_like_climate(device: dict[str, Any]) -> bool:
     state = device.get("state") or {}
 
     if isinstance(state, dict):
-        if state.get("deviceName") in ("PORTABLE_AC", "AIR_CONDITIONER"):
+        if state.get("deviceName") in ("PORTABLE_AC", "PORTABLE_AC_COOLING", "AIR_CONDITIONER"):
             return True
 
-    if device.get("profile_name") in ("PORTABLE_AC", "AIR_CONDITIONER"):
+    if device.get("profile_name") in ("PORTABLE_AC", "PORTABLE_AC_COOLING", "AIR_CONDITIONER"):
         return True
-    if device.get("model") in ("PORTABLE_AC", "AIR_CONDITIONER"):
+    if device.get("model") in ("PORTABLE_AC", "PORTABLE_AC_COOLING", "AIR_CONDITIONER"):
         return True
 
     return False
