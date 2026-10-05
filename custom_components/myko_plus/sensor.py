@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -86,11 +87,17 @@ class MykoSensor(CoordinatorEntity, SensorEntity):
         for key in self._state_keys:
             if key in state:
                 value = state[key]
+                # The API uses the boolean power field for the relay state.
+                if isinstance(value, bool):
+                    continue
                 if isinstance(value, (int, float)):
-                    return value / self._divisor
+                    if math.isfinite(value):
+                        return value / self._divisor
                 if isinstance(value, str):
                     try:
-                        return float(value) / self._divisor
+                        numeric_value = float(value)
+                        if math.isfinite(numeric_value):
+                            return numeric_value / self._divisor
                     except ValueError:
                         pass
         return None
@@ -125,7 +132,7 @@ async def async_setup_entry(
                     SensorDeviceClass.POWER,
                     SensorStateClass.MEASUREMENT,
                     UnitOfPower.WATT,
-                    ("power", "currentPower", "curPower", "activePower", "current_power", "cur_power"),
+                    ("currentPower", "curPower", "activePower", "current_power", "cur_power", "power"),
                 )
             )
             # Total Energy (kWh)

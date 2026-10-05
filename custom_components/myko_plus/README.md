@@ -5,6 +5,7 @@ A custom Home Assistant integration for controlling Myko+ smart devices through 
 This integration currently allows you to:
 - Control Myko+ lights (bulbs)
 - Control supported Myko+ portable AC units
+- Turn Myko+ smart plugs (`PLUG` and `PLUG_EM`) on and off
 - Adjust brightness, color temperature, RGB color, and effects
 - Set HVAC mode, target temperature, fan speed, swing, and sleep mode for supported ACs
 - Keep device states in sync with the cloud
@@ -14,6 +15,8 @@ This integration currently allows you to:
 - Cloud-based communication with Myko+ services
 - Support for light entities (brightness, color temperature, RGB, effects)
 - Support for climate entities (and sleep mode switch entities) for supported portable AC devices
+- Support for smart plug switch entities, including online/offline availability
+- Power, energy, voltage, and current sensors for `PLUG_EM` devices when numeric readings are exposed by the API
 - Token handling with automatic refresh
 - Config Flow support (UI-based setup)
 
@@ -39,7 +42,7 @@ After installation:
 
 ⚠️ This is my first Home Assistant integration and it is still under active development.
 
-Currently, only light (bulb) and portable AC devices are supported, as no other Myko+ device types were available for testing.
+Lights, supported portable AC devices, and smart plugs are supported. Energy-monitoring readings depend on the fields returned by the device; missing readings remain unknown. Sensor units and values should be checked against the mobile app for your model.
 
 Some parts of the API are based on reverse engineering and may change over time. Expect bugs and potential breaking changes.
 
